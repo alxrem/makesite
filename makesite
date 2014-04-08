@@ -1,0 +1,65 @@
+#!/usr/bin/python
+#
+# Copyright (C) 2014  Alexey Remizov <alexey@remizov.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+from os import chmod, rename, walk
+from os.path import abspath, basename, dirname, exists, join, getmtime, \
+                    isdir, normpath
+from sys import exit
+from jinja2 import Environment, FileSystemLoader
+from tempfile import NamedTemporaryFile
+
+def find_basic_templates():
+    path = abspath('.')
+    while True:
+        basic_templates_dir = join(path, '_')
+        if isdir(basic_templates_dir):
+            return basic_templates_dir
+        if path == '/':
+            return None
+        path = dirname(path)
+
+def find_templates():
+    for root, dirs, files in walk('.'):
+        if basename(root) == '_':
+            continue
+        for filename in files:
+            if filename.endswith('.jhtml'):
+                yield root, filename
+
+def find_target(directory, template):
+    return join(directory, template[:-5] + 'html')
+
+def render(template, target):
+    with NamedTemporaryFile(dir=dirname(target), delete=False) as t:
+        t.write(template.render().encode('utf-8'))
+    chmod(t.name, 00644)
+    rename(t.name, target)
+
+basic_templates_dir = find_basic_templates()
+if not basic_templates_dir:
+    print('Basic templates not found')
+    exit(1)
+
+for directory, tpl in find_templates():
+    env = Environment(loader=FileSystemLoader([directory, basic_templates_dir]),
+                      trim_blocks=True)
+    target = find_target(directory, tpl)
+    if not exists(target) or getmtime(join(directory, tpl)) > getmtime(target):
+        render(env.get_template(tpl), target)
+        print('%s is rendered' % (normpath(target),))
+
+# vim: ts=4 sts=4 sw=4 et ai
